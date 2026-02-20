@@ -18,6 +18,8 @@ def create_app():
     # Register Blueprints
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(sensor_bp) # WebSockets usually handle their own prefixes
+    from dashboards.routes import dashboards_bp
+    app.register_blueprint(dashboards_bp, url_prefix='/dashboards')
 
     return app
 
