@@ -183,3 +183,51 @@ Standard HTTP Headers (like `Authorization`) usually don't survive handshake pro
   }
   ```
 - **Description:** Sends a JSON frame containing the most recent database record corresponding to the `<sensor_id>` parameter down the pipe as soon as a new metric row arrives. You can use standard JavaScript `new WebSocket(endpoint)` inside each React flow block to hook up directly to this data feed.
+
+---
+
+## 4. PLC Networking & Control Endpoints
+
+These endpoints manage bidirectional, real-time control logic with external hardware like Raspberry Pi PLCs. 
+
+### `WS /ws/plc`
+**PLC Persistent Connection:** An always-on WebSocket endpoint for PLC devices to maintain connection with the server and receive commands.
+- **Exact Connection URL:** 
+  `ws://localhost:5000/ws/plc?token=eyJhbGciOiJIUzI...`
+- **Initial Registration Message (Sent by PLC upon connection):**
+  ```json
+  {
+    "device_id": "RaspberryPi_01"
+  }
+  ```
+- **Expected Responses from PLC (During Operation):**
+  PLCs should send acknowledgement messages back up the connection when they finish processing commands.
+  ```json
+  {
+    "type": "ack",
+    "command_id": "uuid-string-of-command",
+    "result": "Motor started."
+  }
+  ```
+
+### `POST /devices/<device_id>/command`
+**Send PLC Command:** Allows a web dashboard to send a real-time instruction straight down the localized socket to a specific connected PLC device.
+- **Headers:** `Authorization: Bearer <your_jwt_access_token>`
+  `Content-Type: application/json`
+- **Request Body Example:**
+  ```json
+  {
+    "command": "START_MOTOR",
+    "params": {
+      "speed": 100
+    }
+  }
+  ```
+- **Success Response (200 OK):**
+  ```json
+  {
+    "message": "Command 'START_MOTOR' sent successfully to 'RaspberryPi_01'.",
+    "command_id": "4512bd34-92ca-49d7-8321-72f5bcaba321"
+  }
+  ```
+- **Error Response (404 Not Found - Sensor Offline):** `{"error": "Device 'RaspberryPi_01' is not connected."}`

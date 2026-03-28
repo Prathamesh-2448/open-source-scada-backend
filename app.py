@@ -20,6 +20,9 @@ def create_app():
     app.register_blueprint(sensor_bp) # WebSockets usually handle their own prefixes
     from dashboards.routes import dashboards_bp
     app.register_blueprint(dashboards_bp, url_prefix='/dashboards')
+    
+    from plc.routes import plc_bp
+    app.register_blueprint(plc_bp) # Includes /devices REST endpoints and /ws/plc
 
     return app
 
