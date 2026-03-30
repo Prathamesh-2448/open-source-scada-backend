@@ -231,3 +231,54 @@ These endpoints manage bidirectional, real-time control logic with external hard
   }
   ```
 - **Error Response (404 Not Found - Sensor Offline):** `{"error": "Device 'RaspberryPi_01' is not connected."}`
+
+### Deploying a Logic Graph (`deploy_graph` Command)
+When the frontend dashboard builds a React Flow logic circuit, it pushes the entire structure via the same `POST /devices/<device_id>/command` endpoint using the `deploy_graph` command.
+
+**Deploy Graph Payload Example:**
+```json
+{
+  "command": "deploy_graph",
+  "params": {
+    "nodes": [
+      {
+        "id": "not_gate",
+        "type": "threshold",
+        "data": { "operator": "==", "value": 0 }
+      },
+      {
+        "id": "led_output",
+        "type": "digital_output",
+        "data": { "pin": 17 }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge-1",
+        "source": "not_gate",
+        "target": "led_output"
+      }
+    ]
+  }
+}
+```
+
+---
+
+## 5. PLC Node Palette Reference (Frontend Integration)
+
+When constructing the JSON payload for React Flow, the engine strictly recognizes the following 8 core `type` entries mapped to unique forms.
+
+### Interface Nodes (Hardware)
+1. **`digital_input`**: Initiates physical flows. Requires `data`: `{ "pin": 4 }`
+2. **`digital_output`**: Terminates electrical flows. Requires `data`: `{ "pin": 17 }`
+
+### Logic Nodes (Gates & Comparators)
+3. **`and`**: Outputs True only if all inputs are True. No `data` required.
+4. **`or`**: Outputs True if any input is True. No `data` required.
+5. **`threshold`**: A numerical comparator. Requires `data`: `{ "operator": ">=", "value": 50 }` (Operators: `>`, `<`, `>=`, `<=`, `==`, `!=`)
+
+### Timing & Signal Conditioning (Stateful)
+6. **`timer_on`** (TON Delay): Stays low until input holds high continuously for `$X` seconds. Requires `data`: `{ "delay": 2.5 }`
+7. **`timer_off`** (TOF Delay): Output stays high for `$X` seconds *after* the input shuts off. Requires `data`: `{ "delay": 5.0 }`
+8. **`debounce`**: Clears noisy signals, drops fluttering until completely stable for `$X` seconds. Requires `data`: `{ "delay": 0.5 }`
