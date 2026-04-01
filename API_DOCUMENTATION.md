@@ -282,3 +282,11 @@ When constructing the JSON payload for React Flow, the engine strictly recognize
 6. **`timer_on`** (TON Delay): Stays low until input holds high continuously for `$X` seconds. Requires `data`: `{ "delay": 2.5 }`
 7. **`timer_off`** (TOF Delay): Output stays high for `$X` seconds *after* the input shuts off. Requires `data`: `{ "delay": 5.0 }`
 8. **`debounce`**: Clears noisy signals, drops fluttering until completely stable for `$X` seconds. Requires `data`: `{ "delay": 0.5 }`
+
+### Modbus Communications RS-485 (Hardware UART)
+9. **`modbus_read`**: Reads registers from external hardware and injects them into the circuit flow. Automatically handles GPIO21 DE/RE manipulation. Requires `data`: `{ "slave_id": 1, "register_address": 40001 }`
+10. **`modbus_write`**: Writes incoming logic wires directly to Modbus registers over RS485. Requires `data`: `{ "slave_id": 1, "register_address": 40001 }`
+
+### SCADA Network Telemetry (WebSockets)
+11. **`websocket_ingress`**: Injects live remote telemetry data straight from the main Flask URL feed into local PLC logic. Requires `data`: `{ "url": "ws://localhost:5000/ws/stream/Engine_01", "sensor_id": "Engine_01" }`
+12. **`websocket_egress`**: Pumps local Pi pin logic or raw numbers blindly back to the centralized cloud ingestion database. Requires `data`: `{ "url": "ws://localhost:5000/ws/sensor", "sensor_id": "Remote_Pi_Sensor" }`

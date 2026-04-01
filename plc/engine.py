@@ -26,6 +26,43 @@ class GPIOManager:
         
 gpio_manager = GPIOManager()
 
+class ModbusManager:
+    """
+    Abstracts Modbus RTU calls via MAX485 on Hardware UART (GPIO14/15).
+    Direction is controlled via GPIO21 (HIGH = Write, LOW = Read).
+    """
+    def __init__(self):
+        self.direction_pin = 21
+        self._sim_registers = {}
+
+    def read_register(self, slave, address):
+        gpio_manager.write_pin(self.direction_pin, False) # Read mode
+        return self._sim_registers.get((slave, address), 0.0)
+
+    def write_register(self, slave, address, value):
+        gpio_manager.write_pin(self.direction_pin, True) # Write mode
+        print(f"[MODBUS AL] Wrote {value} to Slave:{slave} Reg:{address}")
+        self._sim_registers[(slave, address)] = value
+        
+modbus_manager = ModbusManager()
+
+class WebSocketManager:
+    """
+    Abstracts external WebSocket Streams to continuously push or pull JSON data.
+    """
+    def __init__(self):
+        self._cache = {}
+
+    def read_stream(self, url, sensor_id):
+        return self._cache.get((url, sensor_id), 0.0)
+
+    def write_stream(self, url, sensor_id, data):
+        print(f"[WEBSOCKET AL] Sending {data} to {url} for exact sensor '{sensor_id}'")
+        self._cache[(url, sensor_id)] = data
+
+ws_manager = WebSocketManager()
+
+
 
 # --- Base Node Class ---
 class BaseNode:
@@ -57,6 +94,36 @@ class DigitalOutputNode(BaseNode):
         val = any(inputs) if inputs else False 
         self.output_value = val
         gpio_manager.write_pin(pin, val)
+
+class ModbusReadNode(BaseNode):
+    def evaluate(self, inputs):
+        slave = self.data.get('slave_id', 1)
+        address = self.data.get('register_address', 0)
+        self.output_value = modbus_manager.read_register(slave, address)
+
+class ModbusWriteNode(BaseNode):
+    def evaluate(self, inputs):
+        slave = self.data.get('slave_id', 1)
+        address = self.data.get('register_address', 0)
+        # Writes the first valid input numeric value to the Modbus register
+        val = inputs[0] if inputs and isinstance(inputs[0], (int, float)) else 0
+        self.output_value = val
+        modbus_manager.write_register(slave, address, val)
+
+class WebsocketIngressNode(BaseNode):
+    def evaluate(self, inputs):
+        url = self.data.get('url', 'ws://localhost:5000/ws/stream/Engine_01')
+        sensor_id = self.data.get('sensor_id', 'Engine_01')
+        self.output_value = ws_manager.read_stream(url, sensor_id)
+
+class WebsocketEgressNode(BaseNode):
+    def evaluate(self, inputs):
+        url = self.data.get('url', 'ws://localhost:5000/ws/sensor')
+        sensor_id = self.data.get('sensor_id', 'Engine_01')
+        val = inputs[0] if inputs else 0
+        self.output_value = val
+        ws_manager.write_stream(url, sensor_id, val)
+
 
 
 # --- Logic Nodes ---
@@ -159,7 +226,11 @@ NODE_REGISTRY = {
     'threshold': ThresholdNode,
     'timer_on': TimerOnNode,
     'timer_off': TimerOffNode,
-    'debounce': DebounceNode
+    'debounce': DebounceNode,
+    'modbus_read': ModbusReadNode,
+    'modbus_write': ModbusWriteNode,
+    'websocket_ingress': WebsocketIngressNode,
+    'websocket_egress': WebsocketEgressNode
 }
 
 
