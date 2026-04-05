@@ -10,5 +10,5 @@ COPY app/ .
 
 EXPOSE 5000
 
-CMD sh -c "sleep 5 && flask db upgrade && python app.py"
+CMD sh -c "sleep 20 && flask db upgrade && python app.py"
 
