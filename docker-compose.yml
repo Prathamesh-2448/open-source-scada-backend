@@ -1,0 +1,49 @@
+services:
+  flask_app:
+    build: .
+    container_name: flask_app
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mysql
+      - influxdb
+    environment:
+      - MYSQL_HOST=mysql
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=root
+      - MYSQL_DB=testdb
+
+      # InfluxDB config
+      - INFLUX_HOST=http://influxdb:8181
+      - INFLUX_TOKEN=my-super-secret-token
+      - INFLUX_DATABASE=mydb
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: testdb
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  influxdb:
+    image: influxdb:3-core
+    container_name: influxdb3
+    ports:
+      - "8181:8181"
+    volumes:
+      - influx_data:/var/lib/influxdb3
+    command: >
+      influxdb3 serve
+      --without-auth
+      --node-id=node1
+      --object-store=file
+      --data-dir=/var/lib/influxdb3
+
+volumes:
+  mysql_data:
+  influx_data:

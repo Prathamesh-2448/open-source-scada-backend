@@ -2,10 +2,20 @@ from flask import Flask
 from database import db, migrate, bcrypt, jwt, sock
 from auth.routes import auth_bp
 from sensors.routes import sensor_bp
+from flask_cors import CORS
+import os
 
 def create_app():
     app = Flask(__name__)
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+mysqlconnector://root:root@localhost:3306/auth_db'
+    CORS(app) # Allow CORS for all domains on all routes
+    
+    # Use environment variables if they exist (for Docker), otherwise default to local vars
+    mysql_user = os.environ.get('MYSQL_USER', 'root')
+    mysql_password = os.environ.get('MYSQL_PASSWORD', 'root')
+    mysql_host = os.environ.get('MYSQL_HOST', 'localhost')
+    mysql_db = os.environ.get('MYSQL_DB', 'auth_db')
+    
+    app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+mysqlconnector://{mysql_user}:{mysql_password}@{mysql_host}:3306/{mysql_db}'
     app.config['JWT_SECRET_KEY'] = 'secret-key'
 
     # Initialize extensions
@@ -28,7 +38,7 @@ def create_app():
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(debug=True)
+    app.run(debug=True, host='0.0.0.0')
 
 
 
