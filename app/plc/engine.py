@@ -2,22 +2,59 @@ import time
 from collections import defaultdict, deque
 import operator
 
+try:
+    import RPi.GPIO as GPIO
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setwarnings(False)
+    GPIO_AVAILABLE = True
+except ImportError:
+    print("[Warning] RPi.GPIO not found. Using simulated GPIO.")
+    GPIO_AVAILABLE = False
+
 # --- GPIO Abstraction Layer ---
 class GPIOManager:
     """
-    Abstracts actual Raspberry Pi GPIO calls.
-    Replace these stubs with actual RPi.GPIO or gpiozero logic when deploying to the Pi.
+    Abstracts actual Raspberry Pi GPIO calls using RPi.GPIO.
     """
     def __init__(self):
         self._inputs = {}
         self._outputs = {}
+        self._setup_pins = set()
+
+    def _ensure_setup(self, pin, mode):
+        if not GPIO_AVAILABLE:
+            return
+        # If the pin hasn't been set up yet, initialize it based on the mode requested.
+        if (pin, mode) not in self._setup_pins:
+            try:
+                if mode == 'IN':
+                    # Automatically using a pulldown to ensure a default LOW state for inputs
+                    GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+                elif mode == 'OUT':
+                    GPIO.setup(pin, GPIO.OUT)
+                self._setup_pins.add((pin, mode))
+            except Exception as e:
+                print(f"[GPIO AL Error] Could not setup pin {pin} as {mode}: {e}")
 
     def read_pin(self, pin):
-        # Simulated read
+        if GPIO_AVAILABLE:
+            try:
+                self._ensure_setup(pin, 'IN')
+                return bool(GPIO.input(pin))
+            except Exception as e:
+                print(f"[GPIO AL Error] Failed to read from pin {pin}: {e}")
+                return False
+        # Fallback to simulated read if not running on a pi
         return self._inputs.get(pin, False)
         
     def write_pin(self, pin, value):
-        # Simulated write
+        if GPIO_AVAILABLE:
+            try:
+                self._ensure_setup(pin, 'OUT')
+                GPIO.output(pin, GPIO.HIGH if value else GPIO.LOW)
+            except Exception as e:
+                print(f"[GPIO AL Error] Failed to write to pin {pin}: {e}")
+        # Keep track for simulation or in case we're falling back
         self._outputs[pin] = value
         print(f"[GPIO AL] Pin {pin} set to {value}")
 
@@ -84,12 +121,12 @@ class BaseNode:
 # --- Input / Output Nodes ---
 class DigitalInputNode(BaseNode):
     def evaluate(self, inputs):
-        pin = self.data.get('pin')
+        pin = int(self.data.get('pin', 0))
         self.output_value = gpio_manager.read_pin(pin)
 
 class DigitalOutputNode(BaseNode):
     def evaluate(self, inputs):
-        pin = self.data.get('pin')
+        pin = int(self.data.get('pin', 0))
         # SCADA standard: default to False if no input
         val = any(inputs) if inputs else False 
         self.output_value = val
@@ -97,14 +134,14 @@ class DigitalOutputNode(BaseNode):
 
 class ModbusReadNode(BaseNode):
     def evaluate(self, inputs):
-        slave = self.data.get('slave_id', 1)
-        address = self.data.get('register_address', 0)
+        slave = int(self.data.get('slave_id', 1))
+        address = int(self.data.get('register_address', 0))
         self.output_value = modbus_manager.read_register(slave, address)
 
 class ModbusWriteNode(BaseNode):
     def evaluate(self, inputs):
-        slave = self.data.get('slave_id', 1)
-        address = self.data.get('register_address', 0)
+        slave = int(self.data.get('slave_id', 1))
+        address = int(self.data.get('register_address', 0))
         # Writes the first valid input numeric value to the Modbus register
         val = inputs[0] if inputs and isinstance(inputs[0], (int, float)) else 0
         self.output_value = val
@@ -343,3 +380,4 @@ if __name__ == "__main__":
         out = engine.scan_cycle()
         print(f"Scan {i}: Final Motor Output State -> {out.get('out1')}")
         time.sleep(0.1)
+
