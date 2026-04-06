@@ -72,7 +72,10 @@ def handle_plc_connection(ws):
             print(f"PLC '{device_id}' disconnected and removed from registry.")
 
 
-@plc_bp.route('/devices/<device_id>/command', methods=['POST'])
+from flask_cors import cross_origin
+
+@plc_bp.route('/devices/<device_id>/command', methods=['POST', 'OPTIONS'], strict_slashes=False)
+@cross_origin(supports_credentials=True)
 @jwt_required()
 def send_plc_command(device_id):
     """

@@ -7,7 +7,7 @@ import os
 
 def create_app():
     app = Flask(__name__)
-    CORS(app) # Allow CORS for all domains on all routes
+    CORS(app, supports_credentials=True) # Allow CORS for all domains on all routes
     
     # Use environment variables if they exist (for Docker), otherwise default to local vars
     mysql_user = os.environ.get('MYSQL_USER', 'root')
