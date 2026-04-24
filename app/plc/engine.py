@@ -1,6 +1,14 @@
 import time
 from collections import defaultdict, deque
 import operator
+import json
+
+try:
+    import websocket
+    WEBSOCKET_AVAILABLE = True
+except ImportError:
+    print("[Warning] websocket-client not found. Using simulated WebSockets.")
+    WEBSOCKET_AVAILABLE = False
 
 try:
     import RPi.GPIO as GPIO
@@ -63,23 +71,62 @@ class GPIOManager:
         
 gpio_manager = GPIOManager()
 
+try:
+    import minimalmodbus
+    import serial
+    MODBUS_AVAILABLE = True
+except ImportError:
+    print("[Warning] minimalmodbus not found. Using simulated Modbus.")
+    MODBUS_AVAILABLE = False
+
 class ModbusManager:
     """
-    Abstracts Modbus RTU calls via MAX485 on Hardware UART (GPIO14/15).
-    Direction is controlled via GPIO21 (HIGH = Write, LOW = Read).
+    Handles actual Modbus RTU calls via Auto-Direction RS485 module on Hardware UART (/dev/serial0).
+    No manual DE/RE direction pin toggling required.
     """
     def __init__(self):
-        self.direction_pin = 21
         self._sim_registers = {}
+        self.instrument = None
+        
+        if MODBUS_AVAILABLE:
+            try:
+                # Initiate hardware UART on the Pi. Slave address defaults to 1, we will change it dynamically
+                self.instrument = minimalmodbus.Instrument('/dev/serial0', 1) 
+                self.instrument.serial.baudrate = 9600
+                self.instrument.serial.bytesize = 8
+                self.instrument.serial.parity = serial.PARITY_NONE
+                self.instrument.serial.stopbits = 1
+                self.instrument.serial.timeout = 0.5
+            except Exception as e:
+                print(f"[MODBUS Init Error] Failed to hook UART for RS485: {e}")
+                self.instrument = None
 
     def read_register(self, slave, address):
-        gpio_manager.write_pin(self.direction_pin, False) # Read mode
+        if self.instrument:
+            try:
+                # Dynamically target the correct slave before reading
+                self.instrument.address = slave
+                # functioncode=3 reads holding registers
+                return self.instrument.read_register(address, 0, functioncode=3)
+            except Exception as e:
+                print(f"[MODBUS Error] Failed to read Slave:{slave} Reg:{address} - {e}")
+                return 0.0
+                
+        # Fallback to backend test mocking
         return self._sim_registers.get((slave, address), 0.0)
 
     def write_register(self, slave, address, value):
-        gpio_manager.write_pin(self.direction_pin, True) # Write mode
-        print(f"[MODBUS AL] Wrote {value} to Slave:{slave} Reg:{address}")
-        self._sim_registers[(slave, address)] = value
+        if self.instrument:
+            try:
+                self.instrument.address = slave
+                # Writes holding register safely casted to int (functioncode=6)
+                self.instrument.write_register(address, int(value), 0, functioncode=6)
+            except Exception as e:
+                print(f"[MODBUS Error] Failed to write to Slave:{slave} Reg:{address} - {e}")
+        else:
+            # Backend test mocking log
+            print(f"[MODBUS AL] Simulating Write -> {value} to Slave:{slave} Reg:{address}")
+            self._sim_registers[(slave, address)] = value
         
 modbus_manager = ModbusManager()
 
@@ -89,13 +136,54 @@ class WebSocketManager:
     """
     def __init__(self):
         self._cache = {}
+        self._sockets = {}
+
+    def _get_socket(self, url):
+        if not WEBSOCKET_AVAILABLE:
+            return None
+        if url not in self._sockets:
+            try:
+                # Set a short timeout so PLC scan cycle isn't blocked indefinitely
+                ws = websocket.create_connection(url, timeout=1)
+                self._sockets[url] = ws
+            except Exception as e:
+                print(f"[WEBSOCKET AL Error] Failed to connect to {url}: {e}")
+                self._sockets[url] = None
+        return self._sockets[url]
 
     def read_stream(self, url, sensor_id):
         return self._cache.get((url, sensor_id), 0.0)
 
     def write_stream(self, url, sensor_id, data):
-        print(f"[WEBSOCKET AL] Sending {data} to {url} for exact sensor '{sensor_id}'")
+        import time
+        if not hasattr(self, '_last_sent'):
+            self._last_sent = {}
+            
+        now = time.time()
+        last_time = self._last_sent.get((url, sensor_id), 0)
+
+        # Update cache every scan cycle for local consistency
         self._cache[(url, sensor_id)] = data
+        
+        # THROTTLE: Only push over network once every 1.0 seconds (1 Hz)
+        if now - last_time >= 1.0:
+            print(f"[WEBSOCKET AL] Sending {data} to {url} for exact sensor '{sensor_id}'")
+            
+            if WEBSOCKET_AVAILABLE:
+                ws = self._get_socket(url)
+                if ws:
+                    try:
+                        payload = json.dumps({
+                            "sensor_id": sensor_id,
+                            "value": data
+                        })
+                        ws.send(payload)
+                        self._last_sent[(url, sensor_id)] = now
+                    except Exception as e:
+                        print(f"[WEBSOCKET AL Error] Failed to send to {url}: {e}")
+                        # Invalidate the broken socket so it tries to reconnect next time
+                        if url in self._sockets:
+                            del self._sockets[url]
 
 ws_manager = WebSocketManager()
 
@@ -380,4 +468,5 @@ if __name__ == "__main__":
         out = engine.scan_cycle()
         print(f"Scan {i}: Final Motor Output State -> {out.get('out1')}")
         time.sleep(0.1)
+
 

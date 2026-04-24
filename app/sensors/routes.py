@@ -20,6 +20,8 @@ sensor_bp = Blueprint('sensors', __name__)
 #     except Exception as e:
 #         ws.send(json.dumps({"error": "Auth failed"}))
 
+# --- Pub/Sub Memory Cache ---
+_live_cache = {}
 
 @sock.route('/ws/sensor')
 def handle_sensor_ingest(ws):
@@ -62,8 +64,14 @@ def handle_sensor_ingest(ws):
                 else:
                     point.tag(key, str(value))
 
-            # Write to InfluxDB 3.0
+            # Write to InfluxDB 3.0 for permanent storage
             influx_client.write(record=point)
+            
+            # Instantly update the live RAM cache for connected frontend dashboards
+            # We append the current timestamp so the frontend graph gets exactly when it arrived
+            data['time'] = datetime.datetime.utcnow().isoformat()
+            _live_cache[table_name] = data
+            
             ws.send(json.dumps({"status": "success", "table": table_name}))
 
         except json.JSONDecodeError:
@@ -91,20 +99,17 @@ def stream_sensor_data(ws, sensor_id):
 
     while True:
         try:
-            # Query the latest record using SQL
-            query = f"SELECT * FROM '{sensor_id}' ORDER BY time DESC LIMIT 1"
-            table = influx_client.query(query=query, language="sql")
-            results = table.to_pylist()
+            # Read instantly from our pub/sub memory cache instead of heavy SQL Polling
+            latest_record = _live_cache.get(sensor_id)
 
-            if results:
-                latest_record = results[0]
+            if latest_record:
                 current_timestamp = latest_record.get('time')
 
                 if current_timestamp != last_timestamp:
-                    ws.send(json.dumps(latest_record, default=str))
+                    ws.send(json.dumps(latest_record))
                     last_timestamp = current_timestamp
 
-            time.sleep(1)  # Poll every 2 seconds
+            time.sleep(0.5)  # Poll the RAM cache safely at 2Hz
 
         except Exception as e:
             print(f"Streaming Error: {e}")
