@@ -166,6 +166,7 @@ Standard HTTP Headers (like `Authorization`) usually don't survive handshake pro
     "status": "running"
   }
   ```
+  *(Note: PLC devices using `websocket_egress` will send a payload structured as `{"sensor_id": "Remote_Pi_Sensor", "value": <data>}`)*
 - **Description:** The system will strip out `sensor_id` to use as the database table/measurement name. Numeric values (`oil_pressure`, `rpm`) are stored as db "fields", while Strings (`status`) are stored as indexable db "tags".
 - **Success Frame (Returned from Server):** `{"status": "success", "table": "Engine_01"}`
 
@@ -267,7 +268,7 @@ When the frontend dashboard builds a React Flow logic circuit, it pushes the ent
 
 ## 5. PLC Node Palette Reference (Frontend Integration)
 
-When constructing the JSON payload for React Flow, the engine strictly recognizes the following 8 core `type` entries mapped to unique forms.
+When constructing the JSON payload for React Flow, the engine strictly recognizes the following 12 core `type` entries mapped to unique forms.
 
 ### Interface Nodes (Hardware)
 1. **`digital_input`**: Initiates physical flows. Requires `data`: `{ "pin": 4 }`
